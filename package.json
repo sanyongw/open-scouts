@@ -12,8 +12,7 @@
     "setup:db": "node scripts/setup-db.mjs"
   },
   "dependencies": {
-    "@ai-sdk/openai": "^2.0.64",
-    "@ai-sdk/react": "^2.0.101",
+    "@ai-sdk/openai": "^0.0.36",
     "@internationalized/date": "^3.5.4",
     "@mendable/firecrawl-js": "^4.5.0",
     "@number-flow/react": "^0.5.10",
@@ -51,7 +50,7 @@
     "@types/react": "^18.2.42",
     "@types/react-dom": "^18.2.17",
     "@types/react-syntax-highlighter": "^15.5.13",
-    "ai": "^5.0.90",
+    "ai": "^3.3.0",
     "class-variance-authority": "^0.7.0",
     "classnames": "^2.5.1",
     "clsx": "^2.1.0",

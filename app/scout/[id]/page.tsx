@@ -21,7 +21,7 @@ import { ScoutChecklistTool } from "@/components/scout-checklist-tool";
 
 import { Fragment, useEffect, useState, useCallback, useRef } from "react";
 import { useRouter, useParams, useSearchParams } from "next/navigation";
-import { useChat } from "@ai-sdk/react";
+import { useChat } from "ai/react";
 import { supabase } from "@/lib/supabase/client";
 import {
   CopyIcon,
@@ -85,7 +85,8 @@ export default function ScoutPage() {
   const wasButtonDisabled = useRef(true);
   const [requestingLocation, setRequestingLocation] = useState(false);
 
-  const { messages, setMessages, sendMessage, status, regenerate } = useChat({
+  const { messages, setMessages, append, status, reload } = useChat({
+    api: "/api/chat-direct",
     id: scoutId,
     onFinish: () => {
       // Reload current scout after each message to update status indicators
@@ -100,137 +101,12 @@ export default function ScoutPage() {
   const isLoading = status === "submitted" || status === "streaming";
 
   // Track if user location has been attempted to load
-  const [locationLoaded, setLocationLoaded] = useState(false);
+  const [locationLoaded, setLocationLoaded] = useState(true); // Disabled location loading
 
-  // Request browser geolocation and save to user preferences
-  const requestBrowserLocation = useCallback(async (userId: string) => {
-    if (!("geolocation" in navigator)) {
-      return null;
-    }
-
-    setRequestingLocation(true);
-
-    try {
-      const position = await new Promise<GeolocationPosition>(
-        (resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-          });
-        },
-      );
-
-      const { latitude, longitude } = position.coords;
-
-      // Reverse geocode using OpenStreetMap Nominatim
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&addressdetails=1`,
-      );
-      const data = await response.json();
-
-      const city =
-        data.address?.city ||
-        data.address?.town ||
-        data.address?.village ||
-        data.address?.municipality ||
-        null;
-      const state = data.address?.state || null;
-      const country = data.address?.country || "Unknown";
-      const countryCode = data.address?.country_code?.toUpperCase() || "XX";
-
-      const userLocation = {
-        country,
-        countryCode,
-        state,
-        stateCode: null,
-        city,
-        latitude,
-        longitude,
-      };
-
-      // Save to user preferences
-      const { data: existing } = await supabase
-        .from("user_preferences")
-        .select("id")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      if (existing) {
-        await supabase
-          .from("user_preferences")
-          .update({ location: userLocation })
-          .eq("user_id", userId);
-      } else {
-        await supabase
-          .from("user_preferences")
-          .insert({ user_id: userId, location: userLocation });
-      }
-
-      // Convert to Location type
-      const locationData: Location = {
-        city: city || country || "Unknown",
-        state: state || undefined,
-        country: country || undefined,
-        latitude,
-        longitude,
-      };
-
-      return locationData;
-    } catch (error) {
-      console.error("Error getting browser location:", error);
-      return null;
-    } finally {
-      setRequestingLocation(false);
-    }
-  }, []);
-
-  // Load user's location from preferences
-  useEffect(() => {
-    const loadUserLocation = async () => {
-      try {
-        // Get current user
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        if (!user?.id) {
-          setLocationLoaded(true);
-          return;
-        }
-
-        // Load location from user preferences
-        const { data } = await supabase
-          .from("user_preferences")
-          .select("location")
-          .eq("user_id", user.id)
-          .maybeSingle();
-
-        if (data?.location) {
-          const userLoc = data.location;
-          const locationData: Location = {
-            city: userLoc.city || userLoc.country || "Unknown",
-            state: userLoc.state || undefined,
-            country: userLoc.country || undefined,
-            latitude: userLoc.latitude || 0,
-            longitude: userLoc.longitude || 0,
-          };
-
-          setLocation(locationData);
-        } else {
-          // No location saved - request browser geolocation permission
-          const browserLocation = await requestBrowserLocation(user.id);
-          if (browserLocation) {
-            setLocation(browserLocation);
-          }
-        }
-      } catch (error) {
-        console.error("Error loading user location:", error);
-      } finally {
-        setLocationLoaded(true);
-      }
-    };
-
-    loadUserLocation();
-  }, [requestBrowserLocation]);
+  // Location feature disabled - no geolocation requests
+  // useEffect(() => {
+  //   setLocationLoaded(true);
+  // }, []);
 
   const loadCurrentScout = useCallback(async () => {
     if (scoutId && scoutId !== "new") {
@@ -252,8 +128,8 @@ export default function ScoutPage() {
         .order("created_at", { ascending: true });
 
       if (data && data.length > 0) {
-        // Convert DB messages to UIMessage format
-        const uiMessages = data.map(
+        // Convert DB messages to Message format
+        const messages = data.map(
           (msg: {
             id: string;
             role: "system" | "user" | "assistant";
@@ -261,10 +137,10 @@ export default function ScoutPage() {
           }) => ({
             id: msg.id,
             role: msg.role,
-            parts: [{ type: "text" as const, text: msg.content }],
+            content: msg.content,
           }),
         );
-        setMessages(uiMessages);
+        setMessages(messages);
       } else {
         setMessages([]);
       }
@@ -349,9 +225,10 @@ export default function ScoutPage() {
       updateScoutTitle(scoutId, message.text);
     }
 
-    sendMessage(
+    append(
       {
-        text: message.text,
+        role: "user",
+        content: message.text,
       },
       {
         body: {
@@ -393,9 +270,10 @@ export default function ScoutPage() {
       window.history.replaceState({}, "", `/scout/${scoutId}`);
 
       // Send the initial query (location can be null if user hasn't set one)
-      sendMessage(
+      append(
         {
-          text: initialQuery,
+          role: "user",
+          content: initialQuery,
         },
         {
           body: {
@@ -412,7 +290,7 @@ export default function ScoutPage() {
     messages.length,
     scoutId,
     location,
-    sendMessage,
+    append,
   ]);
 
   // Track when button becomes enabled to trigger animation
@@ -513,70 +391,53 @@ export default function ScoutPage() {
                         {messages.map((message, messageIndex) => {
                           const isLastMessage =
                             messageIndex === messages.length - 1;
+                          const isAssistant = message.role === "assistant";
 
                           return (
-                            <div key={message.id}>
-                              {message.parts.map((part, i) => {
-                                if (part.type === "text") {
-                                  const isLastPart =
-                                    i === message.parts.length - 1;
-                                  const isAssistant =
-                                    message.role === "assistant";
+                            <Fragment key={message.id}>
+                              <Message from={message.role}>
+                                <MessageContent>
+                                  <MessageResponse>
+                                    {message.content}
+                                  </MessageResponse>
+                                </MessageContent>
+                              </Message>
 
-                                  return (
-                                    <Fragment key={`${message.id}-${i}`}>
-                                      <Message from={message.role}>
-                                        <MessageContent>
-                                          <MessageResponse>
-                                            {part.text}
-                                          </MessageResponse>
-                                        </MessageContent>
-                                      </Message>
+                              {/* Show checklist after the last assistant message */}
+                              {isAssistant &&
+                                isLastMessage &&
+                                currentScout &&
+                                !isLoading && (
+                                  <div className="mt-16 mb-8">
+                                    <ScoutChecklistTool
+                                      currentScout={currentScout}
+                                      currentLocation={location}
+                                      onScoutUpdate={loadCurrentScout}
+                                    />
+                                  </div>
+                                )}
 
-                                      {/* Show checklist after the last assistant message */}
-                                      {isAssistant &&
-                                        isLastPart &&
-                                        isLastMessage &&
-                                        currentScout &&
-                                        !isLoading && (
-                                          <div className="mt-16 mb-8">
-                                            <ScoutChecklistTool
-                                              currentScout={currentScout}
-                                              currentLocation={location}
-                                              onScoutUpdate={loadCurrentScout}
-                                            />
-                                          </div>
-                                        )}
-
-                                      {isAssistant &&
-                                        isLastPart &&
-                                        !isLoading && (
-                                          <MessageActions className="mt-8">
-                                            <MessageAction
-                                              onClick={() => regenerate()}
-                                              label="Retry"
-                                            >
-                                              <RefreshCcwIcon className="w-12 h-12" />
-                                            </MessageAction>
-                                            <MessageAction
-                                              onClick={() =>
-                                                navigator.clipboard.writeText(
-                                                  part.text,
-                                                )
-                                              }
-                                              label="Copy"
-                                            >
-                                              <CopyIcon className="w-12 h-12" />
-                                            </MessageAction>
-                                          </MessageActions>
-                                        )}
-                                    </Fragment>
-                                  );
-                                }
-
-                                return null;
-                              })}
-                            </div>
+                              {isAssistant && !isLoading && (
+                                <MessageActions className="mt-8">
+                                  <MessageAction
+                                    onClick={() => reload()}
+                                    label="Retry"
+                                  >
+                                    <RefreshCcwIcon className="w-12 h-12" />
+                                  </MessageAction>
+                                  <MessageAction
+                                    onClick={() =>
+                                      navigator.clipboard.writeText(
+                                        message.content,
+                                      )
+                                    }
+                                    label="Copy"
+                                  >
+                                    <CopyIcon className="w-12 h-12" />
+                                  </MessageAction>
+                                </MessageActions>
+                              )}
+                            </Fragment>
                           );
                         })}
                       </>

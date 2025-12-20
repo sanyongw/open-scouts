@@ -52,3 +52,30 @@ server/node_modules
 # Custom
 ## TypeScript
 *.tsbuildinfo
+
+# Testing and Debug Files
+test-*.mjs
+test-*.js
+**/test-*/
+**/debug/
+*.test.ts
+*.spec.ts
+.playwright-mcp/
+
+# Temporary Documentation
+*_FIX.md
+*_REPORT.md
+*_DEPLOY.md
+SOLUTION.md
+TEST_*.md
+DEBUG_*.md
+
+# Deployment Scripts
+deploy-*.sh
+deploy-*.mjs
+sync-secrets.mjs
+
+# Supabase Local
+# supabase/.temp/ - Commented out as these files are already tracked in git
+supabase/.branches/
+supabase/seed.sql

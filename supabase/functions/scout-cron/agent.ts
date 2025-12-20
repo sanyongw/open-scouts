@@ -80,6 +80,8 @@ export async function executeScoutAgent(scout: Scout, supabase: any): Promise<vo
 
   try {
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    const OPENAI_BASE_URL = Deno.env.get("OPENAI_BASE_URL") || "https://api.openai.com/v1";
+    const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
 
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY not configured");
@@ -274,7 +276,7 @@ REMINDER: Write your final response like a NEWS BRIEF. DO NOT mention your proce
     await createStep(supabase, executionId, stepNumber, {
       step_type: "tool_call",
       description: "Initializing agent with OpenAI",
-      input_data: { model: "gpt-5.1-2025-11-13", system: systemPrompt.substring(0, 200) + "..." },
+      input_data: { model: OPENAI_MODEL, system: systemPrompt.substring(0, 200) + "..." },
       status: "running",
     });
 
@@ -305,14 +307,14 @@ REMINDER: Write your final response like a NEWS BRIEF. DO NOT mention your proce
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
 
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${OPENAI_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-5.1-2025-11-13",
+          model: OPENAI_MODEL,
           messages: conversationMessages,
           tools: [
             {
@@ -530,14 +532,14 @@ REMINDER: Write your final response like a NEWS BRIEF. DO NOT mention your proce
             const summaryController = new AbortController();
             const summaryTimeoutId = setTimeout(() => summaryController.abort(), 60000);
 
-            const summaryResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+            const summaryResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
               method: "POST",
               headers: {
                 "Authorization": `Bearer ${OPENAI_API_KEY}`,
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                model: "gpt-5.1-2025-11-13",
+                model: OPENAI_MODEL,
                 messages: [
                   {
                     role: "system",
@@ -564,7 +566,7 @@ REMINDER: Write your final response like a NEWS BRIEF. DO NOT mention your proce
               const embeddingController = new AbortController();
               const embeddingTimeoutId = setTimeout(() => embeddingController.abort(), 60000);
 
-              const embeddingResponse = await fetch("https://api.openai.com/v1/embeddings", {
+              const embeddingResponse = await fetch(`${OPENAI_BASE_URL}/embeddings`, {
                 method: "POST",
                 headers: {
                   "Authorization": `Bearer ${OPENAI_API_KEY}`,

@@ -1,25 +1,13 @@
-import { streamText } from "ai";
-import { createOpenAI } from "@ai-sdk/openai";
 import type { Message } from "ai";
 import {
   supabaseServer,
   createServerSupabaseClient,
 } from "@/lib/supabase/server";
 import { z } from "zod";
+import { streamChatCompletion } from "@/lib/direct-llm-client";
 
 export const maxDuration = 300;
 
-// Create custom OpenAI client with optional base URL
-const openai = createOpenAI({
-  baseURL: process.env.OPENAI_BASE_URL || undefined,
-  apiKey: process.env.OPENAI_API_KEY,
-  compatibility: "compatible",
-});
-
-// Get model from environment variable with fallback
-const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
-
-// Message window size - only send last N messages to reduce token usage
 const MESSAGE_WINDOW_SIZE = 10;
 
 type Location = {
@@ -29,7 +17,6 @@ type Location = {
 };
 
 export async function POST(req: Request) {
-  // Parse request body first (no DB call needed)
   let body: {
     messages: Message[];
     scoutId: string;
@@ -48,7 +35,7 @@ export async function POST(req: Request) {
 
   const { messages, scoutId, location } = body;
 
-  // Combined: auth check + scout ownership + scout data in parallel
+  // Auth check + scout ownership + scout data
   const supabase = await createServerSupabaseClient();
   const [authResult, scoutResult] = await Promise.all([
     supabase.auth.getUser(),
@@ -76,12 +63,11 @@ export async function POST(req: Request) {
 
   const currentScout = scoutData;
 
-  // Save user message to database
+  // Save user message
   if (messages.length > 0) {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage.role === "user") {
       const content = lastMessage.content;
-
       if (content) {
         await supabaseServer.from("scout_messages").insert({
           scout_id: scoutId,
@@ -92,10 +78,10 @@ export async function POST(req: Request) {
     }
   }
 
-  // Apply message windowing - only keep last N messages
+  // Apply message windowing
   const windowedMessages = messages.slice(-MESSAGE_WINDOW_SIZE);
 
-  // Create system prompt for continuous configuration
+  // System prompt
   const systemPrompt = `You are an intelligent assistant that helps users create "Scouts" - automated monitoring and search tasks.
 
 **User's Detected Location:** ${location ? `${location.city} (${location.latitude}, ${location.longitude})` : "Not available"}
@@ -110,7 +96,13 @@ ${currentScout.frequency ? `- Frequency: ${currentScout.frequency}` : "- Frequen
 
 **CRITICAL RULES:**
 
-1. **UPDATE SCOUT IMMEDIATELY:**
+1. **ALWAYS RESPOND WITH TEXT:**
+   - ALWAYS provide a brief text response to the user, even when calling tools
+   - After calling update_scout_config, briefly acknowledge what you've done (e.g., "Got it! I've set that up.")
+   - Keep your responses SHORT - one sentence is enough
+   - NEVER leave the user with no response
+
+2. **UPDATE SCOUT IMMEDIATELY:**
    - INSTANTLY call update_scout_config as soon as you understand what the user wants
    - DO NOT ask for confirmation before updating - just do it
    - From ANY request, you MUST immediately update ALL of these fields:
@@ -122,13 +114,13 @@ ${currentScout.frequency ? `- Frequency: ${currentScout.frequency}` : "- Frequen
    - ONLY ask the user for location (if not inferable) and frequency
    - NEVER set is_active to true - only the user can activate via the UI button
 
-2. **DON'T BE REDUNDANT:**
+3. **DON'T BE REDUNDANT:**
    - The UI shows a checklist of what's been filled in - you don't need to repeat this
    - DO NOT list what you've saved or configured
    - ONLY ask for missing information that you cannot infer
    - Keep responses SHORT and focused on getting missing info
 
-3. **LOCATION HANDLING:**
+4. **LOCATION HANDLING:**
    - **DEFAULT to "any" for non-location-specific topics** (news, trends, tech updates, etc.)
    - **ONLY use detected location if user explicitly mentions**: "near me", "in my area", "in my town", "in my city", "locally", etc.
    - Examples:
@@ -141,13 +133,13 @@ ${currentScout.frequency ? `- Frequency: ${currentScout.frequency}` : "- Frequen
    - **Never assume detected location should be used** unless explicitly requested
    - If user says "anywhere", "any", "globally", or similar → use {city: "any", latitude: 0, longitude: 0}
 
-4. **TITLE MUST BE SHORT:**
+5. **TITLE MUST BE SHORT:**
    - Title: 2-4 words MAX, describing what's being tracked
    - ✅ "New Restaurants", "Indian Restaurants", "Pizza SF", "Coffee Shops"
    - ❌ "Alert me whenever a new restaurant opens up"
    - Extract the core subject, remove filler words
 
-5. **EXAMPLE FLOW:**
+6. **EXAMPLE FLOW:**
    User: "Alert me about new Indian restaurants"
    AI: [INSTANTLY calls update_scout_config with:
         title: "Indian Restaurants",
@@ -160,18 +152,18 @@ ${currentScout.frequency ? `- Frequency: ${currentScout.frequency}` : "- Frequen
    User: "Every 3 days"
    AI: [calls update_scout_config with frequency] "Done! Click the green button to activate."
 
-6. **BE CONCISE:**
+7. **BE CONCISE:**
    - Short, direct questions for missing info
    - No need to confirm what you saved (the UI shows it)
    - Just ask for what's needed next
 
-7. **Frequency Options (use human-friendly language):**
+8. **Frequency Options (use human-friendly language):**
    - "daily" - Say "once a day" or "daily"
    - "every_3_days" - Say "every 3 days" or "every three days"
    - "weekly" - Say "once a week" or "weekly"
    - NEVER use technical formats like "every_3_days" with underscores when talking to users
 
-8. **IMPORTANT - HUMAN-FRIENDLY COMMUNICATION:**
+9. **IMPORTANT - HUMAN-FRIENDLY COMMUNICATION:**
    - You are talking to regular users, NOT developers
    - NEVER use technical terms, variable names, or code-like formats
    - NEVER use underscores in your responses (e.g., say "every 3 days" not "every_3_days")
@@ -180,92 +172,156 @@ ${currentScout.frequency ? `- Frequency: ${currentScout.frequency}` : "- Frequen
 
 Be conversational and helpful. When scout is complete, tell user they can modify anything by chatting with you. Never use em dashes (—)`;
 
-  const result = await streamText({
-    model: openai(OPENAI_MODEL),
-    messages: windowedMessages,
-    system: systemPrompt,
-    tools: {
-      update_scout_config: {
-        description:
-          "Update the scout configuration with new information gathered from the user",
-        parameters: z.object({
-          title: z
-            .string()
-            .optional()
-            .describe("A short, descriptive name for the scout"),
-          goal: z
-            .string()
-            .optional()
-            .describe("What the scout is trying to monitor or find"),
-          description: z
-            .string()
-            .optional()
-            .describe("A detailed explanation of what this scout does"),
-          location: z
-            .object({
-              city: z.string(),
-              latitude: z.number(),
-              longitude: z.number(),
-            })
-            .optional()
-            .describe("The geographic location for the scout"),
-          search_queries: z
-            .array(z.string())
-            .max(5)
-            .optional()
-            .describe("3-5 diverse search terms to maximize coverage (max 5)"),
-          frequency: z
-            .enum(["daily", "every_3_days", "weekly"])
-            .optional()
-            .describe("How often the scout should run"),
-        }),
-        execute: async (params: {
-          title?: string;
-          goal?: string;
-          description?: string;
-          location?: { city: string; latitude: number; longitude: number };
-          search_queries?: string[];
-          frequency?: "daily" | "every_3_days" | "weekly";
-        }) => {
-          // Update the scout with the new information
-          const { error } = await supabaseServer
-            .from("scouts")
-            .update(params)
-            .eq("id", scoutId);
-
-          if (error) {
-            return { success: false, error: error.message };
-          }
-
-          // Compute completion status from merged data (avoid extra DB query)
-          const merged = { ...currentScout, ...params };
-          const isComplete =
-            merged.title &&
-            merged.goal &&
-            merged.description &&
-            merged.location &&
-            (merged.search_queries?.length ?? 0) > 0 &&
-            merged.frequency;
-
-          // Return updated scout data so client can update state without refetching
-          return {
-            success: true,
-            completed: isComplete,
-            updatedFields: params,
-          };
+  // Define update_scout_config tool
+  const updateScoutConfigTool = {
+    type: "function" as const,
+    function: {
+      name: "update_scout_config",
+      description:
+        "Update the scout configuration with new information gathered from the user",
+      parameters: {
+        type: "object",
+        properties: {
+          title: {
+            type: "string",
+            description: "A short, descriptive name for the scout",
+          },
+          goal: {
+            type: "string",
+            description: "What the scout is trying to monitor or find",
+          },
+          description: {
+            type: "string",
+            description: "A detailed explanation of what this scout does",
+          },
+          location: {
+            type: "object",
+            properties: {
+              city: { type: "string" },
+              latitude: { type: "number" },
+              longitude: { type: "number" },
+            },
+            description: "The geographic location for the scout",
+          },
+          search_queries: {
+            type: "array",
+            items: { type: "string" },
+            maxItems: 5,
+            description: "3-5 diverse search terms to maximize coverage (max 5)",
+          },
+          frequency: {
+            type: "string",
+            enum: ["daily", "every_3_days", "weekly"],
+            description: "How often the scout should run",
+          },
         },
       },
     },
-    async onFinish({ text }) {
-      // Save assistant message to database
-      console.log("[API] onFinish called with text:", text);
-      await supabaseServer.from("scout_messages").insert({
-        scout_id: scoutId,
-        role: "assistant",
-        content: text,
-      });
+  };
+
+  // Create streaming response
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      let fullText = "";
+      const toolCallsToExecute: any[] = [];
+
+      try {
+        // Stream from LLM
+        for await (const chunk of streamChatCompletion({
+          apiKey: process.env.OPENAI_API_KEY!,
+          baseURL: process.env.OPENAI_BASE_URL || "https://api.openai.com/v1",
+          model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+          messages: windowedMessages,
+          system: systemPrompt,
+          tools: [updateScoutConfigTool],
+        })) {
+          if (chunk.type === "text-delta") {
+            // Stream text to client
+            controller.enqueue(encoder.encode(`0:${JSON.stringify(chunk.textDelta)}\n`));
+          } else if (chunk.type === "finish") {
+            fullText = chunk.text;
+
+            // Execute tool calls if any
+            if (chunk.toolCalls && chunk.toolCalls.length > 0) {
+              for (const toolCall of chunk.toolCalls) {
+                if (toolCall.function.name === "update_scout_config") {
+                  try {
+                    const args = JSON.parse(toolCall.function.arguments);
+                    console.log("[DIRECT API] Tool call args:", args);
+
+                    // Update scout
+                    const { error } = await supabaseServer
+                      .from("scouts")
+                      .update(args)
+                      .eq("id", scoutId);
+
+                    if (error) {
+                      console.error("[DIRECT API] Scout update error:", error);
+                    } else {
+                      console.log("[DIRECT API] Scout updated successfully");
+
+                      // Check if complete
+                      const merged = { ...currentScout, ...args };
+                      const isComplete =
+                        merged.title &&
+                        merged.goal &&
+                        merged.description &&
+                        merged.location &&
+                        (merged.search_queries?.length ?? 0) > 0 &&
+                        merged.frequency;
+
+                      console.log("[DIRECT API] Scout complete:", isComplete);
+                    }
+                  } catch (e) {
+                    console.error("[DIRECT API] Tool execution error:", e);
+                  }
+                }
+              }
+            }
+
+            // Save assistant message
+            // If model called tools but didn't provide text, add a brief confirmation
+            console.log("[DIRECT API] DEBUG - fullText:", JSON.stringify(fullText), "type:", typeof fullText, "length:", fullText.length);
+            console.log("[DIRECT API] DEBUG - toolCalls exists:", !!chunk.toolCalls, "count:", chunk.toolCalls?.length || 0);
+            console.log("[DIRECT API] DEBUG - condition check: !fullText =", !fullText, "has toolCalls =", !!(chunk.toolCalls && chunk.toolCalls.length > 0));
+
+            let messageToSave = fullText;
+            let usedFallback = false;
+
+            if (!fullText && chunk.toolCalls && chunk.toolCalls.length > 0) {
+              messageToSave = "Got it! I've updated the configuration.";
+              usedFallback = true;
+              console.log("[DIRECT API] No text from model, using fallback message");
+
+              // Stream the fallback message to client since model didn't provide any text
+              controller.enqueue(encoder.encode(`0:${JSON.stringify(messageToSave)}\n`));
+            }
+
+            console.log("[DIRECT API] Saving assistant message, text:", messageToSave, "usedFallback:", usedFallback);
+            if (messageToSave) {
+              await supabaseServer.from("scout_messages").insert({
+                scout_id: scoutId,
+                role: "assistant",
+                content: messageToSave,
+              });
+            }
+          }
+        }
+
+        controller.enqueue(encoder.encode(`d:{}\n`));
+        controller.close();
+      } catch (error) {
+        console.error("[DIRECT API] Stream error:", error);
+        controller.error(error);
+      }
     },
   });
 
-  return result.toTextStreamResponse();
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Transfer-Encoding": "chunked",
+    },
+  });
 }

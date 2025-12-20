@@ -1,10 +1,20 @@
-import { streamText, UIMessage, convertToModelMessages, stepCountIs } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { streamText } from "ai";
+import type { Message } from "ai";
+import { createOpenAI } from "@ai-sdk/openai";
 import { supabaseServer } from "@/lib/supabase/server";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { z } from "zod";
 
 export const maxDuration = 300;
+
+// Create custom OpenAI client with optional base URL
+const openai = createOpenAI({
+  baseURL: process.env.OPENAI_BASE_URL || undefined,
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Get model from environment variable with fallback
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 type Location = {
   city: string;
@@ -28,7 +38,7 @@ export async function POST(req: Request) {
 
   // Parse request body with error handling
   let body: {
-    messages: UIMessage[];
+    messages: Message[];
     scoutId: string;
     location: Location | null;
   };
@@ -66,11 +76,7 @@ export async function POST(req: Request) {
   if (messages.length > 0) {
     const lastMessage = messages[messages.length - 1];
     if (lastMessage.role === "user") {
-      // Extract text from UIMessage parts
-      const textParts = lastMessage.parts.filter(
-        (part) => part.type === "text",
-      );
-      const content = textParts.map((part) => part.text).join("\n");
+      const content = lastMessage.content;
 
       if (content) {
         await supabaseServer.from("scout_messages").insert({
@@ -128,17 +134,15 @@ ${currentScout.frequency ? `- Frequency: ${currentScout.frequency}` : "- Frequen
 
 User's detected location: ${location ? `${location.city} (${location.latitude}, ${location.longitude})` : "Not available"}`;
 
-  const result = streamText({
-    model: openai("gpt-5.1-2025-11-13"),
-    messages: convertToModelMessages(messages),
+  const result = await streamText({
+    model: openai(OPENAI_MODEL),
+    messages: messages,
     system: systemPrompt,
-    toolChoice: "auto",
-    stopWhen: stepCountIs(5),
     tools: {
       update_scout_config: {
         description:
           "Update the scout configuration with new information gathered from the user",
-        inputSchema: z.object({
+        parameters: z.object({
           title: z
             .string()
             .optional()
@@ -224,8 +228,5 @@ User's detected location: ${location ? `${location.city} (${location.latitude}, 
     },
   });
 
-  return result.toUIMessageStreamResponse({
-    sendSources: true,
-    sendReasoning: true,
-  });
+  return result.toTextStreamResponse();
 }
