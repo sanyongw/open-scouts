@@ -167,8 +167,21 @@ ${recentFindings}
 Only report NEW information that differs meaningfully from these recent findings.`;
     }
 
+    // Detect language based on Scout title and description (prioritize title)
+    const scoutText = `${scout.title} ${scout.description || ''} ${scout.goal || ''}`;
+    const containsChinese = /[\u4e00-\u9fff]/.test(scoutText);
+    const languageInstruction = containsChinese
+      ? "You MUST respond ENTIRELY in Chinese (中文). All titles, content, and summaries must be in Chinese."
+      : "You MUST respond ENTIRELY in English. All titles, content, and summaries must be in English.";
+
     const systemPrompt = `# SCOUT AGENT - Automated Monitor
 Current date: ${new Date().toISOString().split('T')[0]}
+
+## CRITICAL INSTRUCTION - LANGUAGE MATCHING
+${languageInstruction}
+- DO NOT mix languages - use ONE language consistently throughout your entire response
+- This is a MANDATORY requirement that overrides all other instructions
+- Language is determined by the Scout's title and description, NOT by individual search queries
 
 ## Your Mission
 You are executing an automated scout for: "${scout.title}"
@@ -223,21 +236,32 @@ You MUST respond with a structured JSON object with the following fields:
 - Present information as a news curator - state facts directly, avoid "I" statements about your process
 
 **For the response field:**
+- **LANGUAGE REQUIREMENT**: Write in the SAME language as the search queries (中文查询→中文回复, English queries→English response)
 - Write a CONCISE, well-structured markdown answer - NO LENGTHY EXPLANATIONS
-- Start with a clear title (##) that describes WHAT was found (e.g., "## New AI Coding Tools Released" not "## Verified Recent Items")
-- Open with 1-2 sentences stating the key findings directly (e.g., "Three new AI developer tools launched today..." not "In the past hour I found and scraped...")
+- Start with a clear title (##) that describes WHAT was found
+- Open with 1-2 sentences stating the key findings directly
 - Use bullet points for structured information (dates, locations, hours, websites, key details)
 - Keep it short and scannable - focus on essential facts only
 - Include sources as inline links within the text or at the end
 - NEVER use em dashes (—) - use regular hyphens (-) or colons (:) instead
 - If taskCompleted is false, briefly state what was searched for and that nothing was found (1-2 sentences max)
+- **REMEMBER**: Match the language of your search queries!
 
-**Example response format:**
+**Example response format for CHINESE search queries (中文查询示例):**
 \`\`\`json
 {
   "taskCompleted": true,
   "taskStatus": "completed",
-  "response": "## New Nepali-Indian Restaurant Opens in Denver\\n\\nMantra Cafe, a family-owned restaurant specializing in Nepali Indian fusion cuisine, has opened its doors in Denver's Golden Triangle/Museum District at 1147 Broadway.\\n\\n**Details:**\\n- **Opening Date**: June 14, 2025\\n- **Location**: 1147 Broadway, Denver, CO 80203\\n- **Hours**: 10:30 AM – 9:30 PM daily\\n- **Specialty**: Nepali Indian fusion featuring chicken tikka masala, momos, Sherpa stews, and naan tikka tacos\\n- **Website**: [mantracafedenver.com](https://mantracafedenver.com)\\n\\n*Sources: [Westword](url), [Denver Event Listing](url)*"
+  "response": "## 猪八戒平台最新项目需求\\n\\n猪八戒网今日发布多个设计和开发项目，涵盖品牌设计、网站开发、移动应用等领域。\\n\\n**项目详情:**\\n- **品牌Logo设计**: 预算5000-8000元，需3天内交付\\n- **企业网站开发**: React技术栈，预算15000元\\n- **UI设计外包**: 移动应用界面设计，长期合作\\n\\n*来源: [猪八戒网](https://www.zbj.com)*"
+}
+\`\`\`
+
+**Example response format for ENGLISH search queries:**
+\`\`\`json
+{
+  "taskCompleted": true,
+  "taskStatus": "completed",
+  "response": "## New AI Tools Released\\n\\nThree new AI developer tools launched today, offering code completion, debugging assistance, and documentation generation.\\n\\n**Details:**\\n- **Tool A**: AI-powered code completion\\n- **Tool B**: Automated bug detection\\n- **Tool C**: Smart documentation generator\\n\\n*Sources: [TechNews](url)*"
 }
 \`\`\`
 
@@ -532,6 +556,10 @@ REMINDER: Write your final response like a NEWS BRIEF. DO NOT mention your proce
             const summaryController = new AbortController();
             const summaryTimeoutId = setTimeout(() => summaryController.abort(), 60000);
 
+            const summaryLanguageInstruction = containsChinese
+              ? "You MUST respond in Chinese (中文). Generate a concise Chinese summary."
+              : "You MUST respond in English. Generate a concise English summary.";
+
             const summaryResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
               method: "POST",
               headers: {
@@ -543,7 +571,7 @@ REMINDER: Write your final response like a NEWS BRIEF. DO NOT mention your proce
                 messages: [
                   {
                     role: "system",
-                    content: "You are a concise summarizer. Generate a single sentence (max 150 characters) that captures the key finding from the scout execution. Focus on what was discovered, not the process. Be specific and include key details like names, locations, or dates if present."
+                    content: `You are a concise summarizer. CRITICAL: ${summaryLanguageInstruction} Do NOT translate or mix languages. Generate a single sentence (max 150 characters) that captures the key finding. Focus on what was discovered, not the process. Include key details like names, locations, or dates if present.`
                   },
                   {
                     role: "user",
