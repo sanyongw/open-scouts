@@ -1,0 +1,28 @@
+{
+  "name": "scout-scripts",
+  "version": "1.0.0",
+  "description": "Scout CLI scripts for AI-powered web search",
+  "main": "search.js",
+  "scripts": {
+    "search": "node search.js",
+    "async": "node async-search.js",
+    "status": "node check-status.js"
+  },
+  "keywords": [
+    "scout",
+    "search",
+    "ai",
+    "web-search",
+    "cli"
+  ],
+  "author": "Scout Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "scout-search": "./search.js",
+    "scout-async": "./async-search.js",
+    "scout-status": "./check-status.js"
+  }
+}

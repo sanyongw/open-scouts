@@ -67,8 +67,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // Call the edge function
-    const response = await fetch(`${supabaseUrl}/functions/v1/scout-cron`, {
+    // Call the edge function with scoutId parameter
+    const response = await fetch(`${supabaseUrl}/functions/v1/scout-cron?scoutId=${scoutId}`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${supabaseAnonKey}`,
