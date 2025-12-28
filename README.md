@@ -301,6 +301,44 @@ bun run build  # or: npm run build / pnpm run build
 bun start      # or: npm start / pnpm start
 ```
 
+## Docker Deployment
+
+Open Scouts provides production-ready Docker deployment with multi-stage builds, health checks, and comprehensive documentation.
+
+### Quick Deploy with Docker
+
+```bash
+# 1. Copy environment variables
+cp .env.example .env
+# Edit .env with your actual values
+
+# 2. Build and deploy
+docker compose up -d --build
+
+# 3. Verify deployment
+docker compose ps
+curl http://localhost:3000/api/health
+```
+
+### Deployment Features
+
+- Multi-stage optimized build (~200MB final image)
+- Health checks with automatic recovery
+- Non-root container user for security
+- Resource limits and logging configuration
+- Environment variable loading from .env file
+- Production-ready with Nginx/SSL support
+
+**For detailed production deployment instructions**, including:
+- Complete setup guide and prerequisites
+- Environment configuration reference
+- Container management and monitoring
+- Troubleshooting and debugging
+- Advanced configurations (Nginx, SSL, CI/CD)
+- Production deployment checklist
+
+See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for the full guide.
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

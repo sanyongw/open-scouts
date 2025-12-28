@@ -21,10 +21,10 @@ const supabase = createClient(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const scoutId = params.id;
+    const { id: scoutId } = await params;
 
     const { data: scout, error } = await supabase
       .from('scouts')
@@ -58,10 +58,10 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const scoutId = params.id;
+    const { id: scoutId } = await params;
     const updates = await request.json();
 
     // Remove fields that shouldn't be updated directly
@@ -105,10 +105,10 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const scoutId = params.id;
+    const { id: scoutId } = await params;
 
     const { error } = await supabase
       .from('scouts')
