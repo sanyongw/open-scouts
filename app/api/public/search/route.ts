@@ -42,20 +42,24 @@ export async function POST(request: NextRequest) {
     console.log('[Public API] Starting real search with ID:', executionId);
 
     // Step 1: Search with Firecrawl
+    const firecrawlRequest = {
+      query,
+      limit: 10,
+      ignoreInvalidURLs: true,
+      scrapeOptions: {
+        maxAge: 3600000, // 1 hour cache
+      },
+    };
+
+    console.log('[Public API] Firecrawl request:', JSON.stringify(firecrawlRequest, null, 2));
+
     const searchResponse = await fetch('https://api.firecrawl.dev/v2/search', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        query,
-        limit: 10,
-        ignoreInvalidURLs: true,
-        scrapeOptions: {
-          maxAge: 3600000, // 1 hour cache
-        },
-      }),
+      body: JSON.stringify(firecrawlRequest),
       signal: AbortSignal.timeout(timeout * 1000),
     });
 
@@ -67,6 +71,8 @@ export async function POST(request: NextRequest) {
     const searchData = await searchResponse.json();
     const webResults = searchData.data?.web || [];
 
+    console.log('[Public API] Firecrawl raw response:', JSON.stringify(searchData, null, 2));
+
     // Format results
     const results = webResults.map((item: any) => ({
       title: item.title || item.url,
@@ -76,6 +82,13 @@ export async function POST(request: NextRequest) {
     }));
 
     console.log('[Public API] Found', results.length, 'search results');
+    console.log('[Public API] Formatted results:');
+    results.forEach((result: any, index: number) => {
+      console.log(`  ${index + 1}. ${result.title}`);
+      console.log(`     URL: ${result.url}`);
+      console.log(`     Snippet: ${result.snippet.substring(0, 100)}${result.snippet.length > 100 ? '...' : ''}`);
+      console.log(`     Date: ${result.date}`);
+    });
 
     // Step 2: Generate summary with OpenAI
     let summary = `Found ${results.length} results for "${query}"`;
@@ -104,6 +117,7 @@ export async function POST(request: NextRequest) {
         if (openaiResponse.ok) {
           const openaiData = await openaiResponse.json();
           summary = openaiData.choices[0]?.message?.content || summary;
+          console.log('[Public API] LLM generated summary:', summary);
         }
       } catch (summaryError) {
         console.warn('[Public API] Summary generation failed:', summaryError);

@@ -85,7 +85,7 @@ export default function ScoutPage() {
   const wasButtonDisabled = useRef(true);
   const [requestingLocation, setRequestingLocation] = useState(false);
 
-  const { messages, setMessages, append, status, reload } = useChat({
+  const { messages, setMessages, append, isLoading, reload } = useChat({
     api: "/api/chat-direct",
     id: scoutId,
     onFinish: () => {
@@ -96,9 +96,6 @@ export default function ScoutPage() {
       console.error("Chat error:", error);
     },
   });
-
-  // Loading state: true when submitted OR streaming
-  const isLoading = status === "submitted" || status === "streaming";
 
   // Track if user location has been attempted to load
   const [locationLoaded, setLocationLoaded] = useState(true); // Disabled location loading

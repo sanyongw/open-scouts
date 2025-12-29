@@ -26,7 +26,15 @@ import {
   SelectValue,
 } from "@/components/ui/shadcn/select";
 import { supabase } from "@/lib/supabase/client";
-import type { ToolUIPart } from "ai";
+
+// Define ToolUIPart type since it's not exported in current AI SDK version
+type ToolUIPart = {
+  type: string;
+  state: "input-streaming" | "input-available" | "output-available" | "output-error";
+  input?: any;
+  output?: any;
+  errorText?: string;
+};
 
 type Location = {
   city: string;

@@ -12,13 +12,21 @@ import {
   TooltipTrigger,
 } from "@/components/ui/shadcn-default/tooltip";
 import { cn } from "@/lib/utils";
-import type { FileUIPart, UIMessage } from "ai";
+import type { Message as UIMessage } from "ai";
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
   PaperclipIcon,
   XIcon,
 } from "lucide-react";
+
+// Define FileUIPart type since it's not exported in current AI SDK version
+type FileUIPart = {
+  type?: string;
+  filename?: string;
+  mediaType?: string;
+  url?: string;
+};
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
 import {
   createContext,
