@@ -17,7 +17,7 @@ const supabase = createClient(
 );
 
 /**
- * GET /api/public/executions/:id - Get execution result with optional steps
+ * GET /api/public/executions/:id - Get execution result with optional steps (no user isolation)
  */
 export async function GET(
   request: NextRequest,
@@ -31,7 +31,7 @@ export async function GET(
     // Get execution
     const { data: execution, error: execError } = await supabase
       .from('scout_executions')
-      .select('*, scouts!inner(user_id)')
+      .select('*')
       .eq('id', executionId)
       .single();
 
@@ -42,19 +42,8 @@ export async function GET(
       );
     }
 
-    // Verify scout belongs to shared user
-    if (execution.scouts.user_id !== SHARED_USER_ID) {
-      return NextResponse.json(
-        { success: false, error: 'Execution not found' },
-        { status: 404 }
-      );
-    }
-
-    // Remove the join data
-    const { scouts: _, ...cleanExecution } = execution;
-
     const result: any = {
-      execution: cleanExecution
+      execution: execution
     };
 
     // Optionally include steps

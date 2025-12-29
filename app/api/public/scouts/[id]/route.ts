@@ -17,7 +17,7 @@ const supabase = createClient(
 );
 
 /**
- * GET /api/public/scouts/:id - Get scout details
+ * GET /api/public/scouts/:id - Get scout details (no user isolation)
  */
 export async function GET(
   request: NextRequest,
@@ -30,7 +30,6 @@ export async function GET(
       .from('scouts')
       .select('*')
       .eq('id', scoutId)
-      .eq('user_id', SHARED_USER_ID)
       .single();
 
     if (error || !scout) {
@@ -54,7 +53,7 @@ export async function GET(
 }
 
 /**
- * PATCH /api/public/scouts/:id - Update scout
+ * PATCH /api/public/scouts/:id - Update scout (no user isolation)
  */
 export async function PATCH(
   request: NextRequest,
@@ -76,7 +75,6 @@ export async function PATCH(
         updated_at: new Date().toISOString()
       })
       .eq('id', scoutId)
-      .eq('user_id', SHARED_USER_ID)
       .select()
       .single();
 
@@ -101,7 +99,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/public/scouts/:id - Delete scout
+ * DELETE /api/public/scouts/:id - Delete scout (no user isolation)
  */
 export async function DELETE(
   request: NextRequest,
@@ -113,8 +111,7 @@ export async function DELETE(
     const { error } = await supabase
       .from('scouts')
       .delete()
-      .eq('id', scoutId)
-      .eq('user_id', SHARED_USER_ID);
+      .eq('id', scoutId);
 
     if (error) {
       return NextResponse.json(

@@ -17,7 +17,7 @@ const supabase = createClient(
 );
 
 /**
- * GET /api/public/scouts - List all scouts for shared user
+ * GET /api/public/scouts - List all scouts (no user isolation)
  */
 export async function GET(request: NextRequest) {
   try {
@@ -31,7 +31,6 @@ export async function GET(request: NextRequest) {
     let query = supabase
       .from('scouts')
       .select('*', { count: 'exact' })
-      .eq('user_id', SHARED_USER_ID)
       .order(orderBy, { ascending: orderDirection === 'asc' })
       .range(offset, offset + limit - 1);
 

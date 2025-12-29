@@ -17,7 +17,7 @@ const supabase = createClient(
 );
 
 /**
- * GET /api/public/scouts/:id/executions - List executions for a scout
+ * GET /api/public/scouts/:id/executions - List executions for a scout (no user isolation)
  */
 export async function GET(
   request: NextRequest,
@@ -30,12 +30,11 @@ export async function GET(
     const offset = parseInt(searchParams.get('offset') || '0');
     const status = searchParams.get('status');
 
-    // Verify scout belongs to shared user
+    // Verify scout exists
     const { data: scout } = await supabase
       .from('scouts')
       .select('id')
       .eq('id', scoutId)
-      .eq('user_id', SHARED_USER_ID)
       .single();
 
     if (!scout) {
