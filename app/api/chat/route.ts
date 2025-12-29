@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, type CoreMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import type { Message } from "ai";
 import {
@@ -93,7 +93,7 @@ export async function POST(req: Request) {
   }
 
   // Apply message windowing - only keep last N messages
-  const windowedMessages = messages.slice(-MESSAGE_WINDOW_SIZE);
+  const windowedMessages = messages.slice(-MESSAGE_WINDOW_SIZE) as CoreMessage[];
 
   // Create system prompt for continuous configuration
   const systemPrompt = `You are an intelligent assistant that helps users create "Scouts" - automated monitoring and search tasks.

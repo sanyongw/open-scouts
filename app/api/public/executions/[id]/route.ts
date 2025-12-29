@@ -21,10 +21,10 @@ const supabase = createClient(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const executionId = params.id;
+    const { id: executionId } = await params;
     const { searchParams } = new URL(request.url);
     const includeSteps = searchParams.get('include_steps') === 'true';
 

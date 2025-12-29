@@ -1,4 +1,4 @@
-import { streamText } from "ai";
+import { streamText, type CoreMessage } from "ai";
 import type { Message } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { supabaseServer } from "@/lib/supabase/server";
@@ -136,7 +136,7 @@ User's detected location: ${location ? `${location.city} (${location.latitude}, 
 
   const result = await streamText({
     model: openai(OPENAI_MODEL),
-    messages: messages,
+    messages: messages as CoreMessage[],
     system: systemPrompt,
     tools: {
       update_scout_config: {

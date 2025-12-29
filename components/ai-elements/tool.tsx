@@ -7,7 +7,15 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/shadcn/collapsible";
 import { cn } from "@/lib/utils";
-import type { ToolUIPart } from "ai";
+
+// Define ToolUIPart type since it's not exported in current AI SDK version
+type ToolUIPart = {
+  type: string;
+  state: "input-streaming" | "input-available" | "output-available" | "output-error";
+  input?: any;
+  output?: any;
+  errorText?: string;
+};
 import {
   CheckCircleIcon,
   ChevronDownIcon,

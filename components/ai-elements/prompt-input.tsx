@@ -35,7 +35,15 @@ import {
   SelectValue,
 } from "@/components/ui/shadcn/select";
 import { cn } from "@/lib/utils";
-import type { ChatStatus, FileUIPart } from "ai";
+
+// Define types since they're not exported in current AI SDK version
+type ChatStatus = "streaming" | "awaiting_message" | "submitted" | "error";
+type FileUIPart = {
+  type?: string;
+  filename?: string;
+  mediaType?: string;
+  url?: string;
+};
 import {
   CornerDownLeftIcon,
   ImageIcon,
