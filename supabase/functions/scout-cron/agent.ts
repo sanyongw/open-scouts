@@ -240,9 +240,14 @@ You MUST respond with a structured JSON object with the following fields:
 - Write a CONCISE, well-structured markdown answer - NO LENGTHY EXPLANATIONS
 - Start with a clear title (##) that describes WHAT was found
 - Open with 1-2 sentences stating the key findings directly
-- Use bullet points for structured information (dates, locations, hours, websites, key details)
-- Keep it short and scannable - focus on essential facts only
-- Include sources as inline links within the text or at the end
+- **CRITICAL - URL LISTING REQUIREMENT:**
+  * **MUST list EVERY SINGLE URL** you found - aim for 10-15+ results minimum
+  * Even if multiple URLs discuss similar topics, list them ALL as separate items (only skip exact duplicate URLs)
+  * DO NOT consolidate or merge similar news - each URL gets its own numbered item
+  * Format as numbered list: **序号. [完整标题](URL)** on new line, then description
+  * DO NOT use section headers like "项目列表" or "Tool List" - start numbering directly after summary
+  * Example: "**1. [Task Title](https://example.com)**\n   Description with key details..."
+- Keep it scannable - focus on essential facts with actual URLs
 - NEVER use em dashes (—) - use regular hyphens (-) or colons (:) instead
 - If taskCompleted is false, briefly state what was searched for and that nothing was found (1-2 sentences max)
 - **REMEMBER**: Match the language of your search queries!
@@ -252,7 +257,7 @@ You MUST respond with a structured JSON object with the following fields:
 {
   "taskCompleted": true,
   "taskStatus": "completed",
-  "response": "## 猪八戒平台最新项目需求\\n\\n猪八戒网今日发布多个设计和开发项目，涵盖品牌设计、网站开发、移动应用等领域。\\n\\n**项目详情:**\\n- **品牌Logo设计**: 预算5000-8000元，需3天内交付\\n- **企业网站开发**: React技术栈，预算15000元\\n- **UI设计外包**: 移动应用界面设计，长期合作\\n\\n*来源: [猪八戒网](https://www.zbj.com)*"
+  "response": "## 猪八戒平台最新项目需求\\n\\n找到5个最新发布的设计和开发项目，预算从¥3000到¥15000不等。\\n\\n**1. [品牌Logo设计项目](https://www.zbj.com/xq/abc123.html)**\\n预算¥5000-¥8000，需3天内交付，要求现代简约风格\\n\\n**2. [企业网站开发](https://www.zbj.com/xq/def456.html)**\\n预算¥15000，React技术栈，包含后台管理系统\\n\\n**3. [UI设计外包](https://www.zbj.com/xq/ghi789.html)**\\n移动应用界面设计，长期合作，按项目结算\\n\\n**4. [电商小程序开发](https://m.zbj.com/xq/jkl012.html)**\\n预算¥8000，需要支付和订单管理功能\\n\\n**5. [品牌VI设计](https://www.zbj.com/xq/mno345.html)**\\n预算¥3000，包含名片、信纸等基础应用"
 }
 \`\`\`
 
@@ -261,7 +266,7 @@ You MUST respond with a structured JSON object with the following fields:
 {
   "taskCompleted": true,
   "taskStatus": "completed",
-  "response": "## New AI Tools Released\\n\\nThree new AI developer tools launched today, offering code completion, debugging assistance, and documentation generation.\\n\\n**Details:**\\n- **Tool A**: AI-powered code completion\\n- **Tool B**: Automated bug detection\\n- **Tool C**: Smart documentation generator\\n\\n*Sources: [TechNews](url)*"
+  "response": "## New AI Tools Released\\n\\nFound 3 new AI developer tools launched this week, featuring code completion, debugging, and documentation generation.\\n\\n**1. [CodeAssist Pro](https://example.com/codeassist)**\\nAI-powered code completion with context awareness, supports 20+ languages\\n\\n**2. [BugHunter AI](https://example.com/bughunter)**\\nAutomated bug detection and suggested fixes, integrated with VS Code\\n\\n**3. [DocGen Smart](https://example.com/docgen)**\\nIntelligent documentation generator from code comments, supports multiple formats"
 }
 \`\`\`
 
@@ -273,10 +278,17 @@ You have access to searchWeb and scrapeWebsite tools. Use them intelligently to 
     const timeFilter = scout.frequency === 'daily' ? 'qdr:d' : scout.frequency === 'every_3_days' ? 'qdr:w' : 'qdr:w';
     const timeDescription = scout.frequency === 'daily' ? 'day' : scout.frequency === 'every_3_days' ? '3 days' : 'week';
 
+    // Detect if this is a task/job platform scout (skip time filters for marketplace content)
+    const isTaskPlatform = /task|job|listing|marketplace|freelance|gig|猪八戒|upwork|fiverr|任务|招标|需求/i.test(scout.goal + " " + scout.description);
+
+    const timeFilterInstruction = isTaskPlatform
+      ? "- IMPORTANT: Do NOT use time filter (tbs) for task/job platform searches - we want to see ALL available tasks, not just recently posted ones"
+      : `- Use the time filter (tbs: "${timeFilter}") to get results from the past ${timeDescription}`;
+
     const userMessage = `Execute the scout using this STRUCTURED WORKFLOW:
 
 **Step 1**: Search using the configured queries: ${scout.search_queries.join(", ")}
-- Use the time filter (tbs: "${timeFilter}") to get results from the past ${timeDescription}
+${timeFilterInstruction}
 - Do ONE search per configured query
 
 **Step 2**: Scrape 2-3 of the most relevant results to verify the information
