@@ -1,0 +1,21 @@
+{
+  "name": "scout-to-pptx-client",
+  "version": "1.0.0",
+  "description": "Client for generating PowerPoint presentations from Scout search results",
+  "main": "generate-pptx.js",
+  "scripts": {
+    "generate": "node generate-pptx.js"
+  },
+  "keywords": [
+    "scout",
+    "powerpoint",
+    "pptx",
+    "client"
+  ],
+  "author": "Open Scouts",
+  "license": "MIT",
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
