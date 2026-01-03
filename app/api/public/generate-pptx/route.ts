@@ -4,33 +4,53 @@ import PptxGenJS from 'pptxgenjs';
 export const maxDuration = 300; // 5 minutes
 
 /**
- * Generate PowerPoint presentations from search queries
+ * Generate PowerPoint presentations from Scout search results
  *
  * This API endpoint:
- * 1. Searches the web using Firecrawl
- * 2. Analyzes results with OpenAI to create presentation outline
- * 3. Generates images for slides using Gemini (optional)
- * 4. Assembles and returns a PPTX file
+ * 1. Accepts Scout search results (query, results, summary, keyFindings)
+ * 2. Transforms Scout analysis into presentation outline
+ * 3. Captures webpage screenshots as evidence (optional)
+ * 4. Generates AI images for slides (optional)
+ * 5. Assembles and returns a PPTX file
  *
  * POST /api/public/generate-pptx
- * Body: { query: string, options?: { generateImages?: boolean } }
+ * Body: {
+ *   scoutResults: {
+ *     query: string,
+ *     results: Array<{title: string, url: string, snippet: string}>,
+ *     summary?: string,
+ *     keyFindings?: Array<any>
+ *   },
+ *   options?: {
+ *     generateImages?: boolean,
+ *     captureScreenshots?: boolean
+ *   }
+ * }
  * Returns: PPTX file stream
  */
 export async function POST(request: NextRequest) {
   try {
-    const { query, options = {} } = await request.json();
-    const { generateImages = true } = options;
+    const { scoutResults, options = {} } = await request.json();
+    const { generateImages = true, captureScreenshots = false } = options;
 
-    // Validate query
-    if (!query || query.trim().length === 0) {
+    // Validate scoutResults
+    if (!scoutResults || !scoutResults.query) {
       return NextResponse.json(
-        { error: 'Query is required' },
+        { error: 'Scout results with query are required' },
         { status: 400 }
       );
     }
 
-    console.log('[Generate PPTX] Starting generation for query:', query);
-    console.log('[Generate PPTX] Options:', { generateImages });
+    if (!scoutResults.results || !Array.isArray(scoutResults.results) || scoutResults.results.length === 0) {
+      return NextResponse.json(
+        { error: 'Scout results must contain at least one search result' },
+        { status: 400 }
+      );
+    }
+
+    console.log('[Generate PPTX] Starting generation for query:', scoutResults.query);
+    console.log('[Generate PPTX] Options:', { generateImages, captureScreenshots });
+    console.log('[Generate PPTX] Scout results count:', scoutResults.results.length);
 
     const startTime = Date.now();
 
@@ -45,8 +65,8 @@ export async function POST(request: NextRequest) {
     const GEMINI_IMAGE_MODEL = process.env.GEMINI_IMAGE_MODEL;
 
     // Validate required keys
-    if (!FIRECRAWL_API_KEY) {
-      throw new Error('FIRECRAWL_API_KEY not configured');
+    if (captureScreenshots && !FIRECRAWL_API_KEY) {
+      throw new Error('FIRECRAWL_API_KEY required for screenshot capture');
     }
     if (!OPENAI_API_KEY) {
       throw new Error('OPENAI_API_KEY not configured');
@@ -56,53 +76,52 @@ export async function POST(request: NextRequest) {
     }
 
     // ========================================================================
-    // STEP 1: Search with Firecrawl
+    // STEP 1: Transform Scout results into presentation outline
     // ========================================================================
-    console.log('[Generate PPTX] Step 1: Searching with Firecrawl...');
+    console.log('[Generate PPTX] Step 1: Transforming Scout results...');
 
-    const searchResponse = await fetch('https://api.firecrawl.dev/v2/search', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${FIRECRAWL_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        query,
-        limit: 10,
-        ignoreInvalidURLs: true,
-        scrapeOptions: {
-          maxAge: 3600000, // 1 hour cache
-        },
-      }),
-      signal: AbortSignal.timeout(60000), // 60s timeout
-    });
-
-    if (!searchResponse.ok) {
-      const errorText = await searchResponse.text();
-      throw new Error(`Firecrawl search failed: ${searchResponse.status} - ${errorText}`);
-    }
-
-    const searchData = await searchResponse.json();
-    const webResults = searchData.data?.web || [];
-
-    const searchResults = webResults.map((item: any) => ({
-      title: item.title || item.url,
-      url: item.url,
-      snippet: item.description || '',
-      date: item.publishedTime || new Date().toISOString().split('T')[0],
+    // Use Scout's search results directly
+    const searchResults = scoutResults.results.map((item: any) => ({
+      title: item.title || item.url || 'Untitled',
+      url: item.url || '',
+      snippet: item.snippet || item.description || '',
+      date: item.date || item.publishedTime || new Date().toISOString().split('T')[0],
     }));
 
-    console.log('[Generate PPTX] Found', searchResults.length, 'search results');
+    console.log('[Generate PPTX] Using', searchResults.length, 'Scout search results');
 
     // ========================================================================
-    // STEP 2: Generate presentation outline with OpenAI
+    // STEP 2: Generate presentation outline from Scout data
     // ========================================================================
-    console.log('[Generate PPTX] Step 2: Generating outline with AI...');
+    console.log('[Generate PPTX] Step 2: Generating outline from Scout analysis...');
 
-    const outlinePrompt = `You are an expert presentation designer. Given these search results for the query "${query}", create a structured PowerPoint outline.
+    let outline: any;
+
+    // If Scout provided keyFindings, use them directly
+    if (scoutResults.keyFindings && Array.isArray(scoutResults.keyFindings) && scoutResults.keyFindings.length > 0) {
+      console.log('[Generate PPTX] Using Scout key findings:', scoutResults.keyFindings.length);
+
+      outline = {
+        title: scoutResults.query || 'Scout Research Report',
+        subtitle: 'AI-Powered Research by Scout',
+        sections: scoutResults.keyFindings.slice(0, 6).map((finding: any) => ({
+          title: finding.title || finding.heading || 'Key Finding',
+          content: finding.content || finding.description || finding.text || '',
+          keyMessage: finding.insight || finding.keyMessage || finding.summary || '',
+          sourceUrl: finding.url || finding.source || ''
+        })),
+        conclusion: scoutResults.summary || 'Research compiled by Scout AI'
+      };
+    } else {
+      // Fallback: Use OpenAI to analyze Scout results
+      console.log('[Generate PPTX] No key findings from Scout, generating outline with OpenAI...');
+
+      const outlinePrompt = `You are an expert presentation designer. Given these Scout search results for the query "${scoutResults.query}", create a structured PowerPoint outline.
 
 Search Results:
 ${searchResults.slice(0, 8).map((r: any, i: number) => `${i + 1}. ${r.title}\n   ${r.snippet}`).join('\n\n')}
+
+${scoutResults.summary ? `\nScout's Summary:\n${scoutResults.summary}\n` : ''}
 
 Your output must be valid JSON with this exact structure:
 {
@@ -127,31 +146,32 @@ Guidelines:
 
 Return ONLY the JSON, no other text.`;
 
-    const outlineResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${OPENAI_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: OPENAI_MODEL,
-        messages: [
-          { role: 'system', content: 'You are a presentation designer. Output only valid JSON.' },
-          { role: 'user', content: outlinePrompt }
-        ],
-        temperature: 0.7,
-        response_format: { type: 'json_object' }
-      }),
-      signal: AbortSignal.timeout(60000),
-    });
+      const outlineResponse = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: OPENAI_MODEL,
+          messages: [
+            { role: 'system', content: 'You are a presentation designer. Output only valid JSON.' },
+            { role: 'user', content: outlinePrompt }
+          ],
+          temperature: 0.7,
+          response_format: { type: 'json_object' }
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
 
-    if (!outlineResponse.ok) {
-      const errorText = await outlineResponse.text();
-      throw new Error(`OpenAI outline generation failed: ${outlineResponse.status} - ${errorText}`);
+      if (!outlineResponse.ok) {
+        const errorText = await outlineResponse.text();
+        throw new Error(`OpenAI outline generation failed: ${outlineResponse.status} - ${errorText}`);
+      }
+
+      const outlineData = await outlineResponse.json();
+      outline = JSON.parse(outlineData.choices[0].message.content);
     }
-
-    const outlineData = await outlineResponse.json();
-    const outline = JSON.parse(outlineData.choices[0].message.content);
 
     console.log('[Generate PPTX] Outline generated:', outline.title);
     console.log('[Generate PPTX] Sections:', outline.sections?.length || 0);
@@ -274,7 +294,7 @@ Return ONLY the JSON, no other text.`;
     pptx.layout = 'LAYOUT_16x9';
     pptx.author = 'Scout AI';
     pptx.company = 'Open Scouts';
-    pptx.subject = query;
+    pptx.subject = scoutResults.query;
     pptx.title = outline.title;
 
     // Colors
@@ -475,7 +495,7 @@ Return ONLY the JSON, no other text.`;
     console.log('[Generate PPTX] File size:', (buffer.length / 1024).toFixed(1), 'KB');
 
     // Generate filename
-    const sanitizedQuery = query.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '-').substring(0, 30);
+    const sanitizedQuery = scoutResults.query.replace(/[^a-zA-Z0-9\u4e00-\u9fa5]/g, '-').substring(0, 30);
     const filename = `scout-report-${sanitizedQuery}-${Date.now()}.pptx`;
     const encodedFilename = encodeURIComponent(filename);
 
