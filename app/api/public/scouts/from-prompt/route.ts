@@ -47,14 +47,29 @@ Scout 是一个 AI 驱动的网络监控工具，可以定期搜索和分析网�
 4. search_queries: 搜索关键词数组（必需，3-5个相关搜索词，使用英文和中文混合）
 5. frequency: 执行频率（可选，可选值：'daily', 'every_3_days', 'weekly'，默认 'daily'）
 
-**搜索词优化原则：**
-- 对于平台类监控（如猪八戒、闲鱼等），使用 "site:域名" 限定网站范围
-- 包含动作词（如"发布"、"招标"、"任务"、"需求"）
-- 对于平台任务/商品监控，避免过强时效性词语（如"今日"、"最新"），因为历史信息也有价值
-- 对于新闻类监控（如AI新闻、金融新闻），应使用时效性词语（如"最新"、"today"）来获取最新资讯
-- 包含具体项目类型（如"软件开发"、"小程序开发"、"UI设计"）
-- 避免使用过于宽泛的平台名称作为单独搜索词
-- 搜索词应能精确定位到具体的任务/项目列表页面或新闻来源
+**搜索词优化通用原则：**
+
+1. **具体优于宽泛（适用所有类型监控）**：
+   - ✅ 使用具体主题、公司、产品、事件作为关键词
+   - ❌ 避免只用"领域名 + latest/today"的宽泛组合
+   - 原因：具体词能精确匹配文章URL，宽泛词容易匹配到网站首页/分类页
+
+2. **新闻类监控（AI新闻、财经新闻、科技新闻等）最佳实践**：
+   - 使用**细分领域/主题**关键词，覆盖面适中（不要太具体到某个单一事件）
+   - 包含行业/板块词（如"科技股"、"能源板块"、"加密货币"、"房地产市场"）
+   - 包含主题词（如"财报季"、"央行政策"、"经济数据"、"IPO上市"、"AI产品发布"）
+   - 可包含热门公司/组织名作为多样性补充（不应全是公司名）
+   - 可适当包含1-2个宽泛词（如"latest tech news"），但需与细分词混合使用
+   - 示例对比：
+     * ❌ 太宽泛："financial news latest", "finance news today" → 易返回网站首页
+     * ❌ 太具体："Tesla Q4 2025 earnings report", "Apple January 2026 iPhone sales" → 覆盖面太窄
+     * ✅ 平衡好："tech stocks earnings season", "Federal Reserve policy updates", "China economic data", "cryptocurrency market news", "AI industry developments"
+
+3. **平台类监控（猪八戒、闲鱼等）**：
+   - 使用 "site:域名" 限定网站范围
+   - 包含动作词（如"发布"、"招标"、"任务"、"需求"）
+   - 避免过强时效性词语（历史信息也有价值）
+   - 包含具体项目类型（如"软件开发"、"小程序开发"、"UI设计"）
 
 请以 JSON 格式返回，不要包含任何其他文字。
 
@@ -89,7 +104,21 @@ Scout 是一个 AI 驱动的网络监控工具，可以定期搜索和分析网�
   "goal": "追踪闲鱼平台上二手 MacBook 的价格和库存",
   "search_queries": ["site:xianyu.com MacBook", "闲鱼 MacBook Pro 二手", "咸鱼 MacBook Air 转让", "xianyu macbook 出售", "闲鱼 苹果笔记本"],
   "frequency": "daily"
-}`;
+}
+
+示例 4：
+用户输入："财经新闻追踪"
+你应该返回：
+{
+  "title": "财经新闻追踪",
+  "description": "追踪全球重要财经事件、市场动态和经济政策",
+  "goal": "持续监控全球及中国的最新财经新闻、股市动态和宏观经济信息",
+  "search_queries": ["tech stocks earnings season", "Federal Reserve policy updates", "China economic data", "cryptocurrency market news", "global stock market analysis"],
+  "frequency": "daily"
+}
+
+注意：这里的search_queries使用了细分领域关键词（科技股财报季、美联储政策、中国经济数据等），
+覆盖面适中，既避免了宽泛的"financial news latest"导致的首页问题，又不会像"Tesla Q4 earnings"那样限制在单一事件。`;
 
   try {
     const openaiBaseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';

@@ -2,6 +2,70 @@
 
 import { isBlacklistedDomain } from "./constants.ts";
 
+/**
+ * Check if URL is likely a homepage or aggregation page
+ * Uses URL path patterns to identify non-article pages
+ */
+function isHomepageOrAggregationPage(url: string): boolean {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const hostname = urlObj.hostname;
+
+    // 1. Homepage patterns (root paths)
+    if (pathname === '/' || pathname === '' || pathname === '/index.html' || pathname === '/index.php') {
+      return true;
+    }
+
+    // Special case: aggregation subdomains at root (e.g., markets.businessinsider.com/)
+    if ((hostname.includes('markets.') || hostname.includes('finance.')) && pathname === '/') {
+      return true;
+    }
+
+    // 2. Aggregation page patterns (category/feed pages)
+    const aggregationPatterns = [
+      /^\/news\/?$/i,           // /news, /news/
+      /^\/finance\/?$/i,        // /finance, /finance/
+      /^\/latest\/?$/i,         // /latest, /latest/
+      /^\/markets\/?$/i,        // /markets, /markets/
+      /^\/stocks\/?$/i,         // /stocks, /stocks/
+      /^\/realtime/i,           // /realtime*
+      /^\/feed/i,               // /feed*
+      /^\/topic\//i,            // /topic/* (topic aggregation pages)
+      /^\/topics\//i,           // /topics/*
+      /\/(index|list|category|tag)\//i,  // */index/*, */list/*, etc.
+    ];
+
+    if (aggregationPatterns.some(pattern => pattern.test(pathname))) {
+      return true;
+    }
+
+    // 3. Article patterns (definitely keep these)
+    const articlePatterns = [
+      /\/\d{4}\/\d{1,2}\/\d{1,2}\//,  // Date in path: /2026/01/18/
+      /\/article[-_]\d+/i,             // Article ID: /article-12345
+      /\/news\/\d+/,                   // News ID: /news/98765
+      /\/story\//i,                    // Story path: /story/...
+      /\/post\//i,                     // Post path: /post/...
+    ];
+
+    if (articlePatterns.some(pattern => pattern.test(pathname))) {
+      return false; // Definitely an article, keep it
+    }
+
+    // 4. Path depth check (shallow paths are likely aggregation pages)
+    const pathSegments = pathname.split('/').filter(s => s.length > 0);
+    if (pathSegments.length < 2) {
+      return true; // Too shallow, likely homepage/category
+    }
+
+    return false;
+  } catch {
+    // If URL parsing fails, don't filter (conservative approach)
+    return false;
+  }
+}
+
 // Execute web search using Firecrawl
 export async function executeSearchTool(args: any, apiKey: string, location?: string, maxAge?: number) {
   try {
@@ -68,8 +132,21 @@ export async function executeSearchTool(args: any, apiKey: string, location?: st
       favicon: item.favicon || null,
     }));
 
-    // Filter out blacklisted domains (social media, etc.)
-    const results = allResults.filter((item: any) => !isBlacklistedDomain(item.url));
+    // Filter out blacklisted domains AND homepage/aggregation pages
+    const results = allResults.filter((item: any) => {
+      // Check 1: Blacklisted domains (social media, etc.)
+      if (isBlacklistedDomain(item.url)) {
+        return false;
+      }
+
+      // Check 2: Homepage/aggregation pages
+      if (isHomepageOrAggregationPage(item.url)) {
+        console.log(`[Search] Filtered out homepage/aggregation page: ${item.url}`);
+        return false;
+      }
+
+      return true;
+    });
     const filteredCount = allResults.length - results.length;
 
     if (filteredCount > 0) {
