@@ -3,8 +3,15 @@
 import { isBlacklistedDomain } from "./constants.ts";
 
 /**
- * Check if URL is likely a homepage or aggregation page
- * Uses URL path patterns to identify non-article pages
+ * Universal Aggregation Page Filter - 5-Layer Defense Mechanism
+ * Detects and filters homepage, aggregation pages, category pages, etc.
+ *
+ * Layers:
+ * 1. Homepage pattern detection (highest priority)
+ * 2. Aggregation page path patterns
+ * 3. Article identifier whitelist (highest priority for keeping)
+ * 4. Path depth heuristics
+ * 5. Conservative default strategy
  */
 function isHomepageOrAggregationPage(url: string): boolean {
   try {
@@ -12,56 +19,124 @@ function isHomepageOrAggregationPage(url: string): boolean {
     const pathname = urlObj.pathname;
     const hostname = urlObj.hostname;
 
-    // 1. Homepage patterns (root paths)
+    // === Layer 1: Homepage Pattern Detection ===
+    // Root path detection
     if (pathname === '/' || pathname === '' || pathname === '/index.html' || pathname === '/index.php') {
       return true;
     }
 
-    // Special case: aggregation subdomains at root (e.g., markets.businessinsider.com/)
-    if ((hostname.includes('markets.') || hostname.includes('finance.')) && pathname === '/') {
+    // Aggregation subdomain special handling (e.g., markets.businessinsider.com/)
+    const aggregationSubdomains = ['markets.', 'finance.', 'news.', 'crypto.', 'blog.'];
+    if (aggregationSubdomains.some(sub => hostname.includes(sub)) && pathname === '/') {
       return true;
     }
 
-    // 2. Aggregation page patterns (category/feed pages)
+    // === Layer 2: Aggregation Page Path Patterns ===
     const aggregationPatterns = [
-      /^\/news\/?$/i,           // /news, /news/
-      /^\/finance\/?$/i,        // /finance, /finance/
-      /^\/latest\/?$/i,         // /latest, /latest/
-      /^\/markets\/?$/i,        // /markets, /markets/
-      /^\/stocks\/?$/i,         // /stocks, /stocks/
-      /^\/realtime/i,           // /realtime*
-      /^\/feed/i,               // /feed*
-      /^\/topic\//i,            // /topic/* (topic aggregation pages)
-      /^\/topics\//i,           // /topics/*
-      /\/(index|list|category|tag)\//i,  // */index/*, */list/*, etc.
+      // Basic aggregation keywords
+      /^\/news\/?$/i,
+      /^\/finance\/?$/i,
+      /^\/latest\/?$/i,
+      /^\/markets\//i,        // FIXED: Changed from /^\/markets\/?$/i to match multi-level paths
+      /^\/stocks\//i,         // FIXED: Changed from /^\/stocks\/?$/i to match multi-level paths
+      /^\/trending\/?$/i,
+      /^\/breaking\/?$/i,
+      /^\/popular\/?$/i,
+      /^\/featured\/?$/i,
+
+      // Realtime/Feed
+      /^\/realtime/i,
+      /^\/feed/i,
+
+      // Topic/Category/Tag
+      /^\/topic\//i,
+      /^\/topics\//i,
+      /^\/section\//i,
+      /^\/sections\//i,
+      /\/(index|list|category|tag)\//i,
+
+      // Archives (year-only or year-month)
+      /^\/archive\/\d{4}\/?$/i,
+      /^\/archive\/\d{4}\/\d{1,2}\/?$/i,
+      // Year-only or year-month paths (without full date)
+      /^\/\d{4}\/?$/i,                      // /2026/
+      /^\/\d{4}\/\d{1,2}\/?$/i,            // /2026/01/
+      /^\/news\/\d{4}\/?$/i,               // /news/2026/
+      /^\/news\/\d{4}\/\d{1,2}\/?$/i,      // /news/2026/01/
+
+      // Other aggregation patterns
+      /^\/highlights\/?$/i,
+      /^\/top-stories\/?$/i,
+      /^\/digest\/?$/i,
+      /^\/roundup\/?$/i,
+
+      // Financial-specific aggregation pages (NEW)
+      /\/calendar\//i,        // NEW: Calendar pages (e.g., /calendar/earnings/)
+      /\/earnings\//i,        // NEW: Earnings aggregation pages
+      /\/screener\//i,        // NEW: Stock screener pages
+      /\/quotes\//i,          // NEW: Quotes aggregation pages
+      /\/watchlist\//i,       // NEW: Watchlist pages
+      /\/portfolio\//i,       // NEW: Portfolio pages
+
+      // Query parameter detection
+      /[\?&](page|offset|limit)=/i,
+      /[\?&](search|q|query)=/i,
+      /[\?&](filter|category|type)=/i,
     ];
 
     if (aggregationPatterns.some(pattern => pattern.test(pathname))) {
       return true;
     }
 
-    // 3. Article patterns (definitely keep these)
+    // === Layer 3: Article Identifier Whitelist (Highest Priority for Keeping) ===
     const articlePatterns = [
-      /\/\d{4}\/\d{1,2}\/\d{1,2}\//,  // Date in path: /2026/01/18/
-      /\/article[-_]\d+/i,             // Article ID: /article-12345
-      /\/news\/\d+/,                   // News ID: /news/98765
-      /\/story\//i,                    // Story path: /story/...
-      /\/post\//i,                     // Post path: /post/...
+      // FIXED: Full date (YYYY/MM/DD) MUST be followed by content
+      /\/\d{4}\/\d{1,2}\/\d{1,2}\/.+/,   // Must have date + content
+      /\/article[-_]\d+/i,                // Article ID: /article-12345
+      /\/news\/\d+/,                      // News ID: /news/98765
+      /\/story\//i,                       // Story path: /story/...
+      /\/post\//i,                        // Post path: /post/...
+      /\/\d{8,}/,                         // Long numeric ID (e.g., Zhihu /question/123456789)
+      /\/p\/\d+/i,                        // Medium-style /p/articleID
+      /\/content\/\d+/i,                  // /content/ID
     ];
 
     if (articlePatterns.some(pattern => pattern.test(pathname))) {
-      return false; // Definitely an article, keep it
+      return false; // Explicitly an article, keep it
     }
 
-    // 4. Path depth check (shallow paths are likely aggregation pages)
+    // === Layer 4: Path Depth Heuristics ===
     const pathSegments = pathname.split('/').filter(s => s.length > 0);
+
+    // Too shallow (< 2 segments), likely aggregation
     if (pathSegments.length < 2) {
-      return true; // Too shallow, likely homepage/category
+      return true;
     }
 
+    // Depth = 2: Special check for shallow aggregation
+    if (pathSegments.length === 2) {
+      const firstSegment = pathSegments[0].toLowerCase();
+      const shallowAggregationKeywords = [
+        'news', 'finance', 'markets', 'stocks', 'tech', 'business',
+        'world', 'politics', 'sports', 'entertainment', 'technology'
+      ];
+
+      if (shallowAggregationKeywords.includes(firstSegment)) {
+        const secondSegment = pathSegments[1];
+        // If second segment is NOT a pure numeric ID, treat as aggregation
+        if (!/^\d+$/.test(secondSegment)) {
+          return true;
+        }
+      }
+    }
+
+    // === Layer 5: Conservative Default Strategy ===
+    // If no aggregation pattern matched, keep the URL (assume it's an article)
     return false;
-  } catch {
-    // If URL parsing fails, don't filter (conservative approach)
+
+  } catch (error) {
+    // If URL parsing fails, use conservative approach: keep the URL
+    console.error(`[URL Filter] Failed to parse URL: ${url}`, error);
     return false;
   }
 }
