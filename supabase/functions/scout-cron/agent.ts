@@ -82,6 +82,11 @@ export async function executeScoutAgent(scout: Scout, supabase: any): Promise<vo
     const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
     const OPENAI_BASE_URL = Deno.env.get("OPENAI_BASE_URL") || "https://api.openai.com/v1";
     const OPENAI_MODEL = Deno.env.get("OPENAI_MODEL") || "gpt-4o-mini";
+    const OPENAI_EMBEDDING_MODEL = Deno.env.get("OPENAI_EMBEDDING_MODEL") || "text-embedding-3-small";
+
+    // Separate configuration for embeddings (optional - defaults to main config)
+    const OPENAI_EMBEDDING_BASE_URL = Deno.env.get("OPENAI_EMBEDDING_BASE_URL") || OPENAI_BASE_URL;
+    const OPENAI_EMBEDDING_API_KEY = Deno.env.get("OPENAI_EMBEDDING_API_KEY") || OPENAI_API_KEY;
 
     if (!OPENAI_API_KEY) {
       throw new Error("OPENAI_API_KEY not configured");
@@ -127,9 +132,10 @@ export async function executeScoutAgent(scout: Scout, supabase: any): Promise<vo
         // Filter out executions with invalid embeddings (null, undefined, or empty arrays)
         similarExecutions = recentExecutions.filter((exec) => {
           const embedding = exec.summary_embedding;
-          const isValid = Array.isArray(embedding) && embedding.length === 1536;
+          // Accept any valid array with length > 0 (supports different embedding models: 512, 768, 1024, 1536, etc.)
+          const isValid = Array.isArray(embedding) && embedding.length > 0;
           if (!isValid && embedding) {
-            console.log(`⚠️ Filtering out execution from ${exec.completed_at} - invalid embedding length: ${Array.isArray(embedding) ? embedding.length : 'not an array'}`);
+            console.log(`⚠️ Filtering out execution from ${exec.completed_at} - invalid embedding: ${Array.isArray(embedding) ? 'empty array' : 'not an array'}`);
           }
           return isValid;
         });
@@ -606,15 +612,16 @@ REMINDER: Write your final response like a NEWS BRIEF. DO NOT mention your proce
               const embeddingController = new AbortController();
               const embeddingTimeoutId = setTimeout(() => embeddingController.abort(), 60000);
 
-              const embeddingResponse = await fetch(`${OPENAI_BASE_URL}/embeddings`, {
+              const embeddingResponse = await fetch(`${OPENAI_EMBEDDING_BASE_URL}/embeddings`, {
                 method: "POST",
                 headers: {
-                  "Authorization": `Bearer ${OPENAI_API_KEY}`,
+                  "Authorization": `Bearer ${OPENAI_EMBEDDING_API_KEY}`,
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  model: "text-embedding-3-small",
+                  model: OPENAI_EMBEDDING_MODEL,
                   input: summaryText,
+                  encoding_format: "float", // Required by some proxies (e.g. litellm)
                 }),
                 signal: embeddingController.signal,
               });
@@ -654,11 +661,12 @@ REMINDER: Write your final response like a NEWS BRIEF. DO NOT mention your proce
                 const prevEmbedding = prevExecution.summary_embedding as number[];
 
                 // Additional validation - should already be filtered but double-check
-                if (!Array.isArray(prevEmbedding) || prevEmbedding.length !== 1536) {
+                if (!Array.isArray(prevEmbedding) || prevEmbedding.length === 0) {
                   console.log(`  ⚠️  Skipping comparison - invalid previous embedding (length: ${Array.isArray(prevEmbedding) ? prevEmbedding.length : 'not an array'}) for execution from ${prevExecution.completed_at}`);
                   continue;
                 }
 
+                // Only compare embeddings with the same dimensions (models must match)
                 if (prevEmbedding.length !== currentEmbedding.length) {
                   console.log(`  ⚠️  Skipping comparison - vector length mismatch (current: ${currentEmbedding.length}, previous: ${prevEmbedding.length}) for execution from ${prevExecution.completed_at}`);
                   continue;
